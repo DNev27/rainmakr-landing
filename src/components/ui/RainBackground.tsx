@@ -4,11 +4,11 @@ import React, { useEffect, useState } from "react";
 import "@/styles/rain.css";
 
 export const RainBackground: React.FC = () => {
-  const [drops, setDrops] = useState<JSX.Element[]>([]);
+  const [drops, setDrops] = useState<React.ReactNode[]>([]);
 
   useEffect(() => {
     // Generate drops ONLY on the client
-    const arr: JSX.Element[] = [];
+    const arr: React.ReactNode[] = [];
     let inc = 0;
 
     while (inc < 100) {
