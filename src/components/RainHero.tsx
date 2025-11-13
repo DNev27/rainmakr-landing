@@ -31,7 +31,6 @@ export default function RainHero({
           sizeVW={sizeVW}
           idleOpacity={baseIdleOpacity}
           glowOpacity={baseGlowOpacity}
-          glowRadius="30%"
           disableHover={isMobile}
         />
       </div>
