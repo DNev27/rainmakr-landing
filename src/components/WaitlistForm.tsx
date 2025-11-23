@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, FormEvent } from "react";
+import React, { useState, useEffect, FormEvent, useMemo } from "react";
 import { GlowButton } from "@/components/GlowButton";
 
 type WaitlistResponse =
@@ -14,6 +14,26 @@ export default function WaitlistForm() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [count, setCount] = useState<number | null>(null);
+
+  // --- Honeypot fields ---
+  const [website, setWebsite] = useState("");       // should remain empty
+  const [startedAt, setStartedAt] = useState<number | null>(null); // set on mount
+
+  useEffect(() => {
+    setStartedAt(Date.now());
+  }, []);
+
+  const trapStyle = useMemo(
+    () =>
+      ({
+        position: "absolute",
+        left: "-9999px",
+        width: 1,
+        height: 1,
+        overflow: "hidden",
+      }) as React.CSSProperties,
+    []
+  );
 
   // Fetch current waitlist count (API caches for 60s)
   useEffect(() => {
@@ -40,7 +60,11 @@ export default function WaitlistForm() {
       const res = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          website,   // honeypot
+          startedAt, // ms timestamp; server checks minimum dwell time
+        }),
       });
 
       const data: WaitlistResponse = await res.json();
@@ -54,6 +78,10 @@ export default function WaitlistForm() {
       setAlreadyOnList(wasAlready);
       setSubmitted(true);
       setEmail("");
+
+      // Reset traps after submit
+      setWebsite("");
+      setStartedAt(Date.now());
 
       // 3) Best-effort refresh of count if we just added a new person
       if (!wasAlready) {
@@ -98,7 +126,9 @@ export default function WaitlistForm() {
     <form
       onSubmit={onSubmit}
       className="flex flex-col items-center gap-3 w-full max-w-md mx-auto"
+      autoComplete="off"
     >
+      {/* Visible email field */}
       <input
         type="email"
         required
@@ -107,7 +137,31 @@ export default function WaitlistForm() {
         onChange={(e) => setEmail(e.target.value)}
         className="w-full px-4 py-3 rounded-xl bg-[#16141d] border border-gray-700 focus:border-pink-500 outline-none text-white"
         disabled={loading}
+        autoComplete="off"
+        inputMode="email"
       />
+
+      {/* Honeypot fields (hidden off-screen & from AT) */}
+      <div style={trapStyle} aria-hidden>
+        <label>
+          Website
+          <input
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            name="website"
+          />
+        </label>
+        <input
+          type="text"
+          tabIndex={-1}
+          readOnly
+          value={startedAt ?? ""}
+          name="startedAt"
+        />
+      </div>
 
       {typeof count === "number" && (
         <p className="text-xs text-gray-400 self-start">
