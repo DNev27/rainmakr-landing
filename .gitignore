@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local exports (CSV downloads)
+waitlist*.csv
+
+# keep a template env in git (optional but recommended)
+!.env.example
