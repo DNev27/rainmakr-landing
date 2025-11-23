@@ -29,6 +29,9 @@ function allow(req: Request) {
   return bucket.count <= MAX_HITS;
 }
 
+// --- anti-bot knobs ---
+const MIN_FILL_MS = 1500; // only enforced if client sends startedAt
+
 export async function POST(req: Request) {
   try {
     // rate-limit: return 429 if too many in this window
@@ -36,15 +39,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
-    // 1) Parse + normalize
-    const { email: raw } = await req.json().catch(() => ({ email: "" }));
-    const email = (raw ?? "").toString().trim().toLowerCase();
+    // 1) Parse payload safely
+    const body = await req.json().catch(() => ({}) as any);
+
+    // Honeypot: common names a bot might fill (keep both for flexibility)
+    const honeypot =
+      (body?.website ?? body?.hp ?? "").toString().trim();
+
+    // If honeypot is filled, silently succeed (no DB write, no email)
+    if (honeypot.length > 0) {
+      return new NextResponse(null, { status: 204 });
+    }
+
+    // Human-time check (only if client sent a timestamp)
+    const startedAt = Number(body?.startedAt ?? NaN);
+    if (Number.isFinite(startedAt)) {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_FILL_MS) {
+        // Act like success to avoid training bots
+        return new NextResponse(null, { status: 204 });
+      }
+    }
+
+    // 2) Normalize + validate email
+    const raw = (body?.email ?? "").toString();
+    const email = raw.trim().toLowerCase();
 
     if (!email || email.length > EMAIL_MAX || !emailRegex.test(email)) {
       return NextResponse.json({ error: "Valid email required" }, { status: 400 });
     }
 
-    // 2) DO NOT CHANGE ENV NAMES
+    // 3) DO NOT CHANGE ENV NAMES
     const supabaseUrl = process.env.SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -58,7 +83,7 @@ export async function POST(req: Request) {
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // 3) Check if already present (so we can return a friendly flag)
+    // 4) Check if already present (for friendly UI)
     const { data: existing, error: lookupErr } = await supabase
       .from("waitlist")
       .select("id")
@@ -72,7 +97,7 @@ export async function POST(req: Request) {
 
     const alreadyOnList = !!existing;
 
-    // 4) Upsert to avoid duplicate-key errors on rapid submissions
+    // 5) Upsert to avoid duplicate-key errors on rapid submissions
     const { error: upsertErr } = await supabase
       .from("waitlist")
       .upsert({ email }, { onConflict: "email", ignoreDuplicates: false });
@@ -82,7 +107,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Database error" }, { status: 500 });
     }
 
-    // 5) Fire best-effort confirmation email (only for first-time adds)
+    // 6) Best-effort confirmation email (only first-time adds)
     if (!alreadyOnList) {
       try {
         const origin =
@@ -91,7 +116,6 @@ export async function POST(req: Request) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),
-          // best-effort: don't block the response if the email route is slow
           cache: "no-store",
         });
       } catch (e) {
@@ -99,7 +123,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6) Friendly response for your UI
+    // 7) Friendly response for your UI
     return NextResponse.json({ success: true, alreadyOnList });
   } catch (err) {
     console.error("🔥 SERVER ERROR:", err);
