@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import React, { useState, useEffect, FormEvent } from "react";
 import { GlowButton } from "@/components/GlowButton";
 
 type WaitlistResponse =
@@ -13,6 +13,21 @@ export default function WaitlistForm() {
   const [alreadyOnList, setAlreadyOnList] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [count, setCount] = useState<number | null>(null);
+
+  // Fetch current waitlist count (API caches for 60s)
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/waitlist/count")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        if (!cancelled && typeof d?.count === "number") setCount(d.count);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -35,9 +50,20 @@ export default function WaitlistForm() {
       }
 
       // 2) Reflect server result in UI
-      setAlreadyOnList(Boolean(data.alreadyOnList));
+      const wasAlready = Boolean(data.alreadyOnList);
+      setAlreadyOnList(wasAlready);
       setSubmitted(true);
       setEmail("");
+
+      // 3) Best-effort refresh of count if we just added a new person
+      if (!wasAlready) {
+        fetch("/api/waitlist/count")
+          .then((r) => (r.ok ? r.json() : Promise.reject()))
+          .then((d) => {
+            if (typeof d?.count === "number") setCount(d.count);
+          })
+          .catch(() => {});
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || "Failed to join waitlist");
     } finally {
@@ -47,17 +73,24 @@ export default function WaitlistForm() {
 
   if (submitted) {
     return (
-      <p className="text-sm text-center font-medium">
-        {alreadyOnList ? (
-          <span className="text-emerald-400">
-            You’re already on the waitlist — we’ll email you soon! ✅
-          </span>
-        ) : (
-          <span className="text-green-400">
-            You’re on the waitlist — we’ll notify you soon! 🚀
-          </span>
+      <div className="text-center space-y-2">
+        <p className="text-sm font-medium">
+          {alreadyOnList ? (
+            <span className="text-emerald-400">
+              You’re already on the waitlist — we’ll email you soon! ✅
+            </span>
+          ) : (
+            <span className="text-green-400">
+              You’re on the waitlist — we’ll notify you soon! 🚀
+            </span>
+          )}
+        </p>
+        {typeof count === "number" && (
+          <p className="text-xs text-gray-400">
+            Current waitlist: {count.toLocaleString()}
+          </p>
         )}
-      </p>
+      </div>
     );
   }
 
@@ -76,14 +109,15 @@ export default function WaitlistForm() {
         disabled={loading}
       />
 
-      {errorMsg && (
-        <p className="text-red-400 text-sm">{errorMsg}</p>
+      {typeof count === "number" && (
+        <p className="text-xs text-gray-400 self-start">
+          Already {count.toLocaleString()} in line
+        </p>
       )}
 
-      <GlowButton
-        text={loading ? "Joining..." : "Join Waitlist"}
-        type="submit"
-      />
+      {errorMsg && <p className="text-red-400 text-sm">{errorMsg}</p>}
+
+      <GlowButton text={loading ? "Joining..." : "Join Waitlist"} type="submit" />
     </form>
   );
 }
