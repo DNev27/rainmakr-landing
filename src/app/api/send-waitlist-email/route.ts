@@ -1,22 +1,41 @@
+// src/app/api/send-waitlist-email/route.ts
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 
+const EMAIL_MAX = 254;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json();
+    const { email: raw } = await req.json().catch(() => ({ email: "" }));
+    const email = (raw ?? "").toString().trim().toLowerCase();
 
-    if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    // Only reject truly bad input
+    if (!email || email.length > EMAIL_MAX || !emailRegex.test(email)) {
+      return NextResponse.json({ error: "Valid email required" }, { status: 400 });
+    }
+
+    // Read SMTP envs (do NOT rename these)
+    const host = process.env.SMTP_HOST;
+    const port = Number(process.env.SMTP_PORT);
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.EMAIL_FROM;
+
+    // If SMTP isn’t configured, report “skipped” but don’t fail the flow
+    if (!host || !port || !user || !pass || !from) {
+      console.warn("send-waitlist-email: SMTP not configured — skipping send.");
+      return NextResponse.json({
+        sent: false,
+        reason: "smtp_not_configured",
+      });
     }
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST!,
-      port: Number(process.env.SMTP_PORT!),
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER!,
-        pass: process.env.SMTP_PASS!,
-      },
+      host,
+      port,
+      secure: false, // ForwardEmail uses STARTTLS on 587
+      auth: { user, pass },
     });
 
     const html = `
@@ -27,20 +46,46 @@ export async function POST(req: Request) {
         <p style="font-size:16px; line-height:1.6; color:#d1d1d6;">
           You're officially locked in and confirmed on the waitlist.
         </p>
+        <p style="font-size:16px; line-height:1.6; color:#d1d1d6;">
+          We're building the world's first AI-powered negotiation assistant that
+          eliminates the stress, ghosting, and frustration of online selling.
+        </p>
+        <p style="margin-top:25px; color:#888;">
+          — The RAINMAKR Team
+        </p>
       </div>
     `;
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM!,
-      to: email,
-      subject: "You're officially on the RAINMAKR waitlist ⚡",
-      html,
+    try {
+      const info = await transporter.sendMail({
+        from,
+        to: email,
+        subject: "You're officially on the RAINMAKR waitlist ⚡",
+        html,
+      });
+
+      return NextResponse.json({
+        sent: true,
+        messageId: info.messageId,
+        accepted: info.accepted ?? [],
+        rejected: info.rejected ?? [],
+      });
+    } catch (e: any) {
+      // Report failure details but keep status 200 so upstream flows aren’t blocked
+      console.warn("send-waitlist-email: SMTP send failed:", e);
+      return NextResponse.json({
+        sent: false,
+        reason: "smtp_send_failed",
+        code: e?.code,
+        responseCode: e?.responseCode,
+      });
+    }
+  } catch (err) {
+    // Catch-all: still don’t break the main flow
+    console.warn("send-waitlist-email: unexpected error:", err);
+    return NextResponse.json({
+      sent: false,
+      reason: "unexpected_error",
     });
-
-    return NextResponse.json({ success: true });
-
-  } catch (err: any) {
-    console.error("Email error:", err);
-    return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
   }
 }
