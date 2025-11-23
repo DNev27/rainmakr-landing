@@ -4,8 +4,38 @@ import { createClient } from "@supabase/supabase-js";
 const EMAIL_MAX = 254;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
+// --- naive in-memory rate limit (dev/local only) ---
+const WINDOW_MS = 10_000; // 10s window
+const MAX_HITS = 8;       // allow 8 submits per IP per window
+const hits: Record<string, { count: number; resetAt: number }> = {};
+
+function allow(req: Request) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    "local";
+
+  const now = Date.now();
+  const bucket = hits[ip] ?? { count: 0, resetAt: now + WINDOW_MS };
+
+  if (now > bucket.resetAt) {
+    bucket.count = 0;
+    bucket.resetAt = now + WINDOW_MS;
+  }
+
+  bucket.count += 1;
+  hits[ip] = bucket;
+  return bucket.count <= MAX_HITS;
+}
+
 export async function POST(req: Request) {
   try {
+    // rate-limit: return 429 if too many in this window
+    if (!allow(req)) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
     // 1) Parse + normalize
     const { email: raw } = await req.json().catch(() => ({ email: "" }));
     const email = (raw ?? "").toString().trim().toLowerCase();
