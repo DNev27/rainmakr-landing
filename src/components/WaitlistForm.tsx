@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, FormEvent, useMemo } from "react";
+import HCaptcha from "@hcaptcha/react-hcaptcha";            // ← added
 import { GlowButton } from "@/components/GlowButton";
 
 type WaitlistResponse =
@@ -16,8 +17,11 @@ export default function WaitlistForm() {
   const [count, setCount] = useState<number | null>(null);
 
   // --- Honeypot fields ---
-  const [website, setWebsite] = useState("");       // should remain empty
+  const [website, setWebsite] = useState(""); // should remain empty
   const [startedAt, setStartedAt] = useState<number | null>(null); // set on mount
+
+  // --- hCaptcha ---
+  const [captchaToken, setCaptchaToken] = useState<string>("");     // ← added
 
   useEffect(() => {
     setStartedAt(Date.now());
@@ -56,14 +60,19 @@ export default function WaitlistForm() {
     setAlreadyOnList(false);
 
     try {
+      if (!captchaToken) {
+        throw new Error("Please complete the captcha");
+      }
+
       // 1) Save to Supabase via API route (server will trigger the email)
       const res = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          website,   // honeypot
-          startedAt, // ms timestamp; server checks minimum dwell time
+          website,        // honeypot
+          startedAt,      // ms timestamp; server checks minimum dwell time
+          hcaptchaToken: captchaToken, // ← added
         }),
       });
 
@@ -79,9 +88,10 @@ export default function WaitlistForm() {
       setSubmitted(true);
       setEmail("");
 
-      // Reset traps after submit
+      // Reset traps + captcha after submit
       setWebsite("");
       setStartedAt(Date.now());
+      setCaptchaToken("");
 
       // 3) Best-effort refresh of count if we just added a new person
       if (!wasAlready) {
@@ -140,6 +150,16 @@ export default function WaitlistForm() {
         autoComplete="off"
         inputMode="email"
       />
+
+      {/* hCaptcha widget */}
+      <div className="w-full">
+        <HCaptcha
+          sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITEKEY as string}
+          onVerify={(tok) => setCaptchaToken(tok)}
+          reCaptchaCompat={false}
+          theme="dark"
+        />
+      </div>
 
       {/* Honeypot fields (hidden off-screen & from AT) */}
       <div style={trapStyle} aria-hidden>

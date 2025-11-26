@@ -43,8 +43,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}) as any);
 
     // Honeypot: common names a bot might fill (keep both for flexibility)
-    const honeypot =
-      (body?.website ?? body?.hp ?? "").toString().trim();
+    const honeypot = (body?.website ?? body?.hp ?? "").toString().trim();
 
     // If honeypot is filled, silently succeed (no DB write, no email)
     if (honeypot.length > 0) {
@@ -59,6 +58,27 @@ export async function POST(req: Request) {
         // Act like success to avoid training bots
         return new NextResponse(null, { status: 204 });
       }
+    }
+
+    // --- hCaptcha verification ---
+    const hcaptchaToken = (body?.hcaptchaToken ?? "").toString();
+    const secret = process.env.HCAPTCHA_SECRET;
+    if (!secret) {
+      console.error("Missing HCAPTCHA_SECRET");
+      return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+    }
+    if (!hcaptchaToken) {
+      return NextResponse.json({ error: "Please complete the captcha" }, { status: 400 });
+    }
+    const verifyRes = await fetch("https://hcaptcha.com/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret, response: hcaptchaToken }),
+      cache: "no-store",
+    });
+    const verifyJson = await verifyRes.json().catch(() => ({}));
+    if (!verifyJson?.success) {
+      return NextResponse.json({ error: "Captcha verification failed" }, { status: 400 });
     }
 
     // 2) Normalize + validate email
