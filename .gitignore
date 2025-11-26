@@ -45,3 +45,6 @@ waitlist*.csv
 
 # keep a template env in git (optional but recommended)
 !.env.example
+
+# editor backups
+*.bak
