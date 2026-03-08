@@ -8,8 +8,35 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://therainmakr.app"),
   title: "RAINMAKR — Close Smarter. Not Harder.",
-  description: "Sell smarter with AI-driven negotiation and escrow.",
+  description: "AI-powered negotiation, pricing, staging, and secure escrow tools for marketplace sellers.",
+  alternates: {
+    canonical: "https://therainmakr.app",
+  },
+  openGraph: {
+    title: "RAINMAKR — AI Negotiation for Marketplace Sellers",
+    description:
+      "Stop answering the same annoying questions. Let RAINMAKR handle negotiation, pricing, staging, and safer deal flow.",
+    url: "https://therainmakr.app",
+    siteName: "RAINMAKR",
+    type: "website",
+    images: [
+      {
+        url: "/og-rainmakr.jpg",
+        width: 1200,
+        height: 630,
+        alt: "RAINMAKR — Close Smarter. Not Harder.",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "RAINMAKR — AI Negotiation for Marketplace Sellers",
+    description:
+      "Stop answering the same annoying questions. Let RAINMAKR handle negotiation, pricing, staging, and safer deal flow.",
+    images: ["/og-rainmakr.jpg"],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
