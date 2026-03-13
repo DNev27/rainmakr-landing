@@ -11,6 +11,13 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://therainmakr.app"),
   title: "RAINMAKR — Close Smarter. Not Harder.",
   description: "AI-powered negotiation, pricing, staging, and secure escrow tools for marketplace sellers.",
+  icons: {
+    icon: [
+      { url: "/rainmakr-favicon.webp", type: "image/webp" },
+    ],
+    shortcut: ["/rainmakr-favicon.webp"],
+    apple: ["/rainmakr-favicon.webp"],
+  },
   alternates: {
     canonical: "https://therainmakr.app",
   },
